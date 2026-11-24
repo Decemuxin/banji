@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>班级管理系统 - 成绩管理</title>
+    <link rel="stylesheet" href="../../css/style.css">
+    <style>
+        /* ===== 成绩管理专属样式 ===== */
+        .stat-number.green { color: #27ae60; }
+        .stat-number.orange { color: #f39c12; }
+        .stat-number.red { color: #e74c3c; }
+        .stat-number.blue { color: #4A90D9; }
+
+        .score-high { color: #27ae60; font-weight: 600; }
+        .score-mid { color: #f39c12; font-weight: 600; }
+        .score-low { color: #e74c3c; font-weight: 600; }
+
+        .course-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 8px;
+        }
+        .course-stat-item {
+            background: #f0f4f8;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+        }
+        .course-stat-item strong { color: #4A90D9; }
+    </style>
+</head>
+<body>
+
+<!-- ===== 顶部导航 ===== -->
+<header class="header">
+    <div class="header-left">
+        <h1>📚 班级管理系统</h1>
+        <a href="/pages/clazz/index.html" class="nav-link">班级管理</a>
+        <a href="/pages/student/index.html" class="nav-link">学生管理</a>
+        <a href="/pages/score/index.html" class="nav-link active">成绩管理</a>
+        <a href="/pages/teacher/index.html" class="nav-link">教师管理</a>   <!-- 新增 -->
+    </div>
+    <div class="user-info">
+        <span id="usernameDisplay">加载中...</span>
+        <span class="role-badge" id="roleDisplay">加载中</span>
+        <button class="btn-logout" onclick="logout()">退出登录</button>
+    </div>
+</header>
+
+<!-- ===== 主体 ===== -->
+<div class="container">
+
+    <!-- 统计卡片 -->
+    <div class="stats">
+        <div class="stat-card">
+            <div class="label">📊 总成绩条数</div>
+            <div class="value stat-number blue" id="totalScores">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📈 平均分</div>
+            <div class="value stat-number green" id="avgScore">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">🏆 最高分</div>
+            <div class="value stat-number orange" id="maxScore">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">📉 最低分</div>
+            <div class="value stat-number red" id="minScore">0</div>
+        </div>
+    </div>
+
+    <!-- 各课程统计 -->
+    <div style="background:white;padding:16px 24px;border-radius:12px;margin-bottom:20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+        <div style="font-size:14px;font-weight:600;color:#555;margin-bottom:8px;">📚 各课程平均分</div>
+        <div class="course-stats" id="courseStats"></div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+        <select id="studentFilter" onchange="search()">
+            <option value="">全部学生</option>
+        </select>
+        <input type="text" id="courseFilter" placeholder="🔍 搜索课程名称" onkeydown="if(event.key==='Enter') search()">
+        <select id="semesterFilter" onchange="search()">
+            <option value="">全部学期</option>
+        </select>
+        <button class="btn btn-primary" onclick="search()">搜索</button>
+        <button class="btn btn-secondary" onclick="resetSearch()">重置</button>
+
+        <span class="spacer"></span>
+
+        <!-- 管理员专属按钮 -->
+        <div class="admin-only" id="adminTools" style="display:none;">
+            <button class="btn btn-success" onclick="openAddModal()">➕ 录入成绩</button>
+            <button class="btn btn-danger" onclick="batchDelete()">🗑️ 批量删除</button>
+        </div>
+
+        <button class="btn btn-secondary" onclick="loadData()">🔄 刷新</button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-container">
+        <table class="list-table">
+            <thead>
+            <tr>
+                <th><input type="checkbox" class="checkbox" id="selectAll" onchange="toggleAll()"></th>
+                <th>学号</th>
+                <th>姓名</th>
+                <th>班级</th>
+                <th>课程名称</th>
+                <th>成绩</th>
+                <th>考试类型</th>
+                <th>考试日期</th>
+                <th>学期</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody id="tableBody">
+            <tr class="empty-row"><td colspan="10">加载中...</td></tr>
+            </tbody>
+        </table>
+
+        <!-- 分页 -->
+        <div class="pagination">
+            <div class="info" id="pageInfo">共 0 条</div>
+            <div class="pages" id="pageButtons"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ===== 新增/编辑模态框 ===== -->
+<div class="modal-overlay" id="scoreModal">
+    <div class="modal">
+        <h2 id="modalTitle">录入成绩</h2>
+        <form id="scoreForm" onsubmit="saveScore(event)">
+            <input type="hidden" id="editId" value="0">
+
+            <div class="form-group">
+                <label>学生 <span class="required">*</span></label>
+                <select id="formStudentId" required>
+                    <option value="">请选择学生</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>课程名称 <span class="required">*</span></label>
+                <input type="text" id="formCourseName" placeholder="请输入课程名称" required>
+            </div>
+
+            <div class="form-group">
+                <label>成绩 <span class="required">*</span></label>
+                <input type="number" id="formScore" placeholder="0-100" min="0" max="100" step="0.5" required>
+            </div>
+
+            <div class="form-group">
+                <label>考试类型</label>
+                <select id="formExamType">
+                    <option value="平时">平时</option>
+                    <option value="期中">期中</option>
+                    <option value="期末" selected>期末</option>
+                    <option value="补考">补考</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>考试日期</label>
+                <input type="date" id="formExamDate">
+            </div>
+
+            <div class="form-group">
+                <label>学期</label>
+                <input type="text" id="formSemester" placeholder="如: 2025-2026-1">
+            </div>
+
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" onclick="closeModal()">取消</button>
+                <button type="submit" class="btn-confirm">确认</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    //  全局变量
+    // ============================================================
+    let currentUser = null;
+    let currentPage = 1;
+    let pageSize = 10;
+    let totalPages = 0;
+    let selectedIds = new Set();
+    let allData = [];
+
+    // ============================================================
+    //  初始化
+    // ============================================================
+    document.addEventListener('DOMContentLoaded', function() {
+        checkLogin();
+        loadStudents();
+        loadSemesters();
+        loadData();
+        loadStatistics();
+    });
+
+    // ============================================================
+    //  登录检查
+    // ============================================================
+    function checkLogin() {
+        fetch('/api/user/current')
+            .then(res => res.json())
+            .then(data => {
+                if (!data.loggedIn) {
+                    window.location.href = '/pages/user/login.html';
+                    return;
+                }
+                currentUser = data;
+                document.getElementById('usernameDisplay').textContent = data.username || '未知用户';
+                document.getElementById('roleDisplay').textContent = data.role === 'admin' ? '管理员' : '普通用户';
+
+                if (data.role === 'admin') {
+                    document.getElementById('adminTools').style.display = 'inline-flex';
+                }
+            })
+            .catch(() => {
+                window.location.href = '/pages/user/login.html';
+            });
+    }
+
+    // ============================================================
+    //  退出登录
+    // ============================================================
+    function logout() {
+        if (!confirm('确认退出登录？')) return;
+        fetch('/api/user/logout')
+            .then(() => { window.location.href = '/pages/user/login.html'; })
+            .catch(() => { window.location.href = '/pages/user/login.html'; });
+    }
+
+    // ============================================================
+    //  加载学生下拉选项
+    // ============================================================
+    function loadStudents() {
+        fetch('/api/score/students')
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const students = data.data || [];
+                    const filterSelect = document.getElementById('studentFilter');
+                    const formSelect = document.getElementById('formStudentId');
+
+                    filterSelect.innerHTML = '<option value="">全部学生</option>';
+                    formSelect.innerHTML = '<option value="">请选择学生</option>';
+
+                    students.forEach(s => {
+                        const displayName = s.name + ' (' + s.studentNo + ')';
+                        const opt1 = document.createElement('option');
+                        opt1.value = s.id;
+                        opt1.textContent = displayName;
+                        filterSelect.appendChild(opt1);
+
+                        const opt2 = document.createElement('option');
+                        opt2.value = s.id;
+                        opt2.textContent = displayName;
+                        formSelect.appendChild(opt2);
+                    });
+                }
+            })
+            .catch(err => console.error('加载学生列表失败:', err));
+    }
+
+    // ============================================================
+    //  加载学期下拉选项
+    // ============================================================
+    function loadSemesters() {
+        fetch('/api/score/semesters')
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const semesters = data.data || [];
+                    const select = document.getElementById('semesterFilter');
+                    select.innerHTML = '<option value="">全部学期</option>';
+                    semesters.forEach(s => {
+                        const opt = document.createElement('option');
+                        opt.value = s;
+                        opt.textContent = s;
+                        select.appendChild(opt);
+                    });
+                }
+            })
+            .catch(err => console.error('加载学期列表失败:', err));
+    }
+
+    // ============================================================
+    //  加载数据
+    // ============================================================
+    function loadData() {
+        const studentId = document.getElementById('studentFilter').value;
+        const courseName = document.getElementById('courseFilter').value.trim();
+        const semester = document.getElementById('semesterFilter').value;
+
+        let url = '/api/score/list?page=' + currentPage + '&pageSize=' + pageSize;
+        if (studentId) url += '&studentId=' + studentId;
+        if (courseName) url += '&courseName=' + encodeURIComponent(courseName);
+        if (semester) url += '&semester=' + encodeURIComponent(semester);
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const result = data.data || {};
+                    allData = result.list || [];
+                    const total = result.total || 0;
+                    totalPages = Math.ceil(total / pageSize);
+
+                    renderTable(allData);
+                    renderPagination(total);
+                    selectedIds.clear();
+                    document.getElementById('selectAll').checked = false;
+                } else {
+                    showError('加载数据失败：' + (data.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showError('网络异常，请稍后重试');
+            });
+    }
+
+    // ============================================================
+    //  渲染表格
+    // ============================================================
+    function renderTable(data) {
+        const tbody = document.getElementById('tableBody');
+
+        if (!data || data.length === 0) {
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="10">暂无数据</td></tr>';
+            return;
+        }
+
+        const isAdmin = currentUser && currentUser.role === 'admin';
+
+        let html = '';
+        data.forEach(item => {
+            const checked = selectedIds.has(item.id) ? 'checked' : '';
+            const score = item.score || 0;
+            let scoreClass = 'score-mid';
+            if (score >= 85) scoreClass = 'score-high';
+            else if (score < 60) scoreClass = 'score-low';
+
+            html += `
+                    <tr class="${selectedIds.has(item.id) ? 'selected' : ''}">
+                        <td><input type="checkbox" class="checkbox row-checkbox" value="${item.id}" ${checked} onchange="toggleRow(${item.id})"></td>
+                        <td>${item.studentNo || '-'}</td>
+                        <td><strong>${item.studentName || '-'}</strong></td>
+                        <td>${item.clazzName || '-'}</td>
+                        <td>${item.courseName || '-'}</td>
+                        <td><span class="${scoreClass}">${score}</span></td>
+                        <td>${item.examType || '-'}</td>
+                        <td>${formatDate(item.examDate)}</td>
+                        <td>${item.semester || '-'}</td>
+                        <td>
+                            ${isAdmin ? `
+                                <button class="btn-edit" onclick="openEditModal(${item.id})">修改</button>
+                                <button class="btn-del" onclick="deleteScore(${item.id})">删除</button>
+                            ` : `
+                                <span class="readonly">只读</span>
+                            `}
+                        </td>
+                    </tr>
+                `;
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    // ============================================================
+    //  渲染分页
+    // ============================================================
+    function renderPagination(total) {
+        document.getElementById('pageInfo').textContent = `共 ${total} 条  第 ${currentPage}/${totalPages || 1} 页`;
+
+        const container = document.getElementById('pageButtons');
+        if (totalPages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        html += `<button onclick="goPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>上一页</button>`;
+
+        const start = Math.max(1, currentPage - 2);
+        const end = Math.min(totalPages, currentPage + 2);
+
+        if (start > 1) {
+            html += `<button onclick="goPage(1)">1</button>`;
+            if (start > 2) html += `<button disabled>...</button>`;
+        }
+
+        for (let i = start; i <= end; i++) {
+            html += `<button onclick="goPage(${i})" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
+        }
+
+        if (end < totalPages) {
+            if (end < totalPages - 1) html += `<button disabled>...</button>`;
+            html += `<button onclick="goPage(${totalPages})">${totalPages}</button>`;
+        }
+
+        html += `<button onclick="goPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>下一页</button>`;
+
+        container.innerHTML = html;
+    }
+
+    // ============================================================
+    //  加载统计
+    // ============================================================
+    function loadStatistics() {
+        fetch('/api/score/statistics')
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const stats = data.data || {};
+                    document.getElementById('totalScores').textContent = stats.total || 0;
+                    document.getElementById('avgScore').textContent = stats.average || 0;
+                    document.getElementById('maxScore').textContent = stats.max || 0;
+                    document.getElementById('minScore').textContent = stats.min || 0;
+
+                    // 各课程统计
+                    const courseStats = stats.courseStats || [];
+                    const container = document.getElementById('courseStats');
+                    if (courseStats.length === 0) {
+                        container.innerHTML = '<span style="color:#999;font-size:13px;">暂无数据</span>';
+                    } else {
+                        let html = '';
+                        courseStats.forEach(c => {
+                            html += `
+                                    <span class="course-stat-item">
+                                        <strong>${c.courseName}</strong>
+                                        平均 ${c.avgScore} 分 (${c.count}人)
+                                    </span>
+                                `;
+                        });
+                        container.innerHTML = html;
+                    }
+                }
+            })
+            .catch(err => console.error('加载统计失败:', err));
+    }
+
+    // ============================================================
+    //  分页跳转
+    // ============================================================
+    function goPage(page) {
+        if (page < 1 || page > totalPages || page === currentPage) return;
+        currentPage = page;
+        loadData();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ============================================================
+    //  搜索 / 重置
+    // ============================================================
+    function search() {
+        currentPage = 1;
+        loadData();
+    }
+
+    function resetSearch() {
+        document.getElementById('studentFilter').value = '';
+        document.getElementById('courseFilter').value = '';
+        document.getElementById('semesterFilter').value = '';
+        currentPage = 1;
+        loadData();
+    }
+
+    // ============================================================
+    //  复选框操作
+    // ============================================================
+    function toggleRow(id) {
+        if (selectedIds.has(id)) {
+            selectedIds.delete(id);
+        } else {
+            selectedIds.add(id);
+        }
+        updateSelectAllState();
+        loadData();
+    }
+
+    function toggleAll() {
+        const checked = document.getElementById('selectAll').checked;
+        if (checked) {
+            allData.forEach(s => selectedIds.add(s.id));
+        } else {
+            selectedIds.clear();
+        }
+        loadData();
+    }
+
+    function updateSelectAllState() {
+        const allChecked = allData.every(s => selectedIds.has(s.id));
+        document.getElementById('selectAll').checked = allChecked && allData.length > 0;
+    }
+
+    // ============================================================
+    //  打开新增模态框
+    // ============================================================
+    function openAddModal() {
+        document.getElementById('modalTitle').textContent = '录入成绩';
+        document.getElementById('editId').value = '0';
+        document.getElementById('scoreForm').reset();
+        document.getElementById('formExamType').value = '期末';
+        document.getElementById('formStudentId').value = '';
+        document.getElementById('scoreModal').classList.add('show');
+    }
+
+    // ============================================================
+    //  打开编辑模态框
+    // ============================================================
+    function openEditModal(id) {
+        fetch('/api/score/' + id)
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    const s = data.data;
+                    document.getElementById('modalTitle').textContent = '修改成绩';
+                    document.getElementById('editId').value = s.id;
+                    document.getElementById('formStudentId').value = s.studentId || '';
+                    document.getElementById('formCourseName').value = s.courseName || '';
+                    document.getElementById('formScore').value = s.score || '';
+                    document.getElementById('formExamType').value = s.examType || '期末';
+                    document.getElementById('formExamDate').value = s.examDate || '';
+                    document.getElementById('formSemester').value = s.semester || '';
+                    document.getElementById('scoreModal').classList.add('show');
+                } else {
+                    alert('获取成绩信息失败：' + (data.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('网络异常，请稍后重试');
+                console.error(err);
+            });
+    }
+
+    // ============================================================
+    //  关闭模态框
+    // ============================================================
+    function closeModal() {
+        document.getElementById('scoreModal').classList.remove('show');
+    }
+
+    // ============================================================
+    //  保存成绩（新增/编辑）
+    // ============================================================
+    function saveScore(event) {
+        event.preventDefault();
+
+        const id = parseInt(document.getElementById('editId').value);
+        const studentId = document.getElementById('formStudentId').value;
+        const courseName = document.getElementById('formCourseName').value.trim();
+        const score = parseFloat(document.getElementById('formScore').value);
+        const examType = document.getElementById('formExamType').value;
+        const examDate = document.getElementById('formExamDate').value;
+        const semester = document.getElementById('formSemester').value.trim();
+
+        if (!studentId) { alert('请选择学生'); return; }
+        if (!courseName) { alert('请输入课程名称'); return; }
+        if (isNaN(score) || score < 0 || score > 100) { alert('请输入0-100之间的成绩'); return; }
+
+        const data = {
+            studentId: parseInt(studentId),
+            courseName: courseName,
+            score: score,
+            examType: examType,
+            examDate: examDate || null,
+            semester: semester || null
+        };
+
+        const url = id > 0 ? '/api/score/update' : '/api/score/add';
+        const method = id > 0 ? 'PUT' : 'POST';
+        if (id > 0) data.id = id;
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+            .then(res => res.json())
+            .then(result => {
+                if (result.code === 200) {
+                    alert(result.message);
+                    closeModal();
+                    loadData();
+                    loadStatistics();
+                } else {
+                    alert('操作失败：' + (result.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('网络异常，请稍后重试');
+                console.error(err);
+            });
+    }
+
+    // ============================================================
+    //  删除成绩
+    // ============================================================
+    function deleteScore(id) {
+        if (!confirm('确认删除该成绩记录？')) return;
+
+        fetch('/api/score/delete/' + id, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(result => {
+                if (result.code === 200) {
+                    alert(result.message);
+                    loadData();
+                    loadStatistics();
+                } else {
+                    alert('删除失败：' + (result.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('网络异常，请稍后重试');
+                console.error(err);
+            });
+    }
+
+    // ============================================================
+    //  批量删除
+    // ============================================================
+    function batchDelete() {
+        const ids = Array.from(selectedIds);
+        if (ids.length === 0) {
+            alert('请先选择要删除的成绩');
+            return;
+        }
+        if (!confirm('确认删除选中的 ' + ids.length + ' 条成绩记录？')) return;
+
+        fetch('/api/score/batchDelete', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+        })
+            .then(res => res.json())
+            .then(result => {
+                if (result.code === 200) {
+                    alert(result.message);
+                    selectedIds.clear();
+                    loadData();
+                    loadStatistics();
+                } else {
+                    alert('批量删除失败：' + (result.message || '未知错误'));
+                }
+            })
+            .catch(err => {
+                alert('网络异常，请稍后重试');
+                console.error(err);
+            });
+    }
+
+    // ============================================================
+    //  工具函数
+    // ============================================================
+    function formatDate(dateStr) {
+        if (!dateStr) return '-';
+        try {
+            const d = new Date(dateStr);
+            return d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+        } catch (e) {
+            return dateStr;
+        }
+    }
+
+    function showError(msg) {
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="10">❌ ' + msg + '</td></tr>';
+    }
+
+    // ============================================================
+    //  点击模态框外部关闭
+    // ============================================================
+    document.getElementById('scoreModal').addEventListener('click', function(e) {
+        if (e.target === this) closeModal();
+    });
+</script>
+
+</body>
+</html>
